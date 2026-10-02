@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webiks-hebrew-ragbot"
+version = "1.0.2"
+description = "RAG retrieval engine over Elasticsearch with a fine-tuned Hebrew sentence-transformer"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "elasticsearch==8.14.0",
+    "sentence-transformers==3.0.1",
+    "torch==2.3.1",
+    "transformers==4.42.3",
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools]
+packages = ["webiks_hebrew_ragbot"]
