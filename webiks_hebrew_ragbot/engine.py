@@ -1,5 +1,6 @@
 import logging
 import time
+import numpy as np
 import torch
 from datetime import datetime
 from .llm_client import LLMClient
@@ -62,6 +63,7 @@ class Engine:
         else:
             self.retrieval_model = retrieval_model
         self.retrieval_model.eval()
+        self._title_vector_cache = {}
 
 
     def text_to_embed(self, doc: dict) -> str:
@@ -77,6 +79,27 @@ class Engine:
         return "\n".join(parts)
 
 
+    def embed_document(self, doc: dict):
+        """
+        Vector stored for one paragraph. With `embed_title_weight` = 0 (default) this is
+        exactly `encode(text_to_embed(doc))` as before. Otherwise the title is embedded on its
+        own (cached per distinct title) and fused into the paragraph vector:
+        normalise(w * unit(title) + (1 - w) * unit(text)).
+        """
+        text_vec = np.asarray(self.retrieval_model.encode(self.text_to_embed(doc)), dtype=np.float32)
+        w = definitions.embed_title_weight
+        title = doc.get(definitions.title_field)
+        if w <= 0 or not title:
+            return text_vec
+        title = str(title)
+        if title not in self._title_vector_cache:
+            tv = np.asarray(self.retrieval_model.encode(title), dtype=np.float32)
+            self._title_vector_cache[title] = tv / (np.linalg.norm(tv) or 1.0)
+        unit_text = text_vec / (np.linalg.norm(text_vec) or 1.0)
+        fused = w * self._title_vector_cache[title] + (1.0 - w) * unit_text
+        return fused / (np.linalg.norm(fused) or 1.0)
+
+
     def update_docs(self, list_of_docs: list[dict], delete_existing=False):
         """
           Updates or creates documents in the Elasticsearch index.
@@ -86,7 +109,7 @@ class Engine:
           """
         for doc in list_of_docs:
             if definitions.field_to_embed in doc.keys():
-                content_vectors = self.retrieval_model.encode(self.text_to_embed(doc))
+                content_vectors = self.embed_document(doc)
                 doc[f'{definitions.field_to_embed}_{definitions.model_name}_vectors'] = content_vectors
 
             doc['last_update'] = datetime.now()
@@ -106,7 +129,7 @@ class Engine:
         """
         for doc in list_of_paragraphs:
             if definitions.field_to_embed in doc.keys():
-                content_vectors = self.retrieval_model.encode(self.text_to_embed(doc))
+                content_vectors = self.embed_document(doc)
                 doc[f'{definitions.field_to_embed}_{definitions.model_name}_vectors'] = content_vectors
                 doc['last_update'] = datetime.now()
                 self.elastic_model.create_paragraph(doc)
