@@ -64,6 +64,19 @@ class Engine:
         self.retrieval_model.eval()
 
 
+    def text_to_embed(self, doc: dict) -> str:
+        """
+        Text handed to the retrieval model for one paragraph.
+        Default (no `embed_context_fields` in the document config): the `field_to_embed` value,
+        exactly as before. With context fields configured, their values are prepended, one per
+        line, so the paragraph is embedded together with e.g. its page title. Queries are
+        embedded unchanged; only indexing is affected.
+        """
+        parts = [str(doc[f]) for f in definitions.embed_context_fields if doc.get(f)]
+        parts.append(str(doc.get(definitions.field_to_embed, "")))
+        return "\n".join(parts)
+
+
     def update_docs(self, list_of_docs: list[dict], delete_existing=False):
         """
           Updates or creates documents in the Elasticsearch index.
@@ -73,7 +86,7 @@ class Engine:
           """
         for doc in list_of_docs:
             if definitions.field_to_embed in doc.keys():
-                content_vectors = self.retrieval_model.encode(doc[definitions.field_to_embed])
+                content_vectors = self.retrieval_model.encode(self.text_to_embed(doc))
                 doc[f'{definitions.field_to_embed}_{definitions.model_name}_vectors'] = content_vectors
 
             doc['last_update'] = datetime.now()
@@ -93,7 +106,7 @@ class Engine:
         """
         for doc in list_of_paragraphs:
             if definitions.field_to_embed in doc.keys():
-                content_vectors = self.retrieval_model.encode(doc[definitions.field_to_embed])
+                content_vectors = self.retrieval_model.encode(self.text_to_embed(doc))
                 doc[f'{definitions.field_to_embed}_{definitions.model_name}_vectors'] = content_vectors
                 doc['last_update'] = datetime.now()
                 self.elastic_model.create_paragraph(doc)

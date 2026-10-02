@@ -29,12 +29,16 @@ class DocumentDefinitions:
        field_for_llm (str, optional): The field for LLM. Default is None.
    """
     def __init__(self, saved_fields: dict[str, DocumentFieldDefinition], model_name :str, field_to_embed:str,
-                 identifier: str, field_for_llm: str = None):
+                 identifier: str, field_for_llm: str = None, embed_context_fields: list[str] = None):
         self.saved_fields = saved_fields
         self.model_name = model_name
         self.field_to_embed = field_to_embed
         self.identifier = identifier
         self.field_for_llm = field_for_llm
+        # Fields whose text is prepended to `field_to_embed` before embedding (e.g. ["title"]).
+        # Empty by default, which reproduces the original behaviour exactly. Only the text fed
+        # to the retrieval model changes; stored fields and the vector field name do not.
+        self.embed_context_fields = list(embed_context_fields or [])
 
 
 def initialize_definitions():
@@ -53,13 +57,19 @@ def initialize_definitions():
         field_to_embed = definitions["field_to_embed"]
         identifier_field = definitions['identifier_field']
         field_for_llm = definitions.get('field_for_llm', None)
+        embed_context_fields = definitions.get('embed_context_fields', [])
         if identifier_field not in saved_fields.keys():
             raise ValueError("identifier_field must be one of the saved fields, check the configuration file")
 
         if field_to_embed not in saved_fields.keys():
             raise ValueError(f"{field_to_embed} must be one of the saved fields {saved_fields.keys()}, check the configuration file")
 
-        return DocumentDefinitions(saved_fields, model_name, field_to_embed, identifier_field, field_for_llm)
+        for field in embed_context_fields:
+            if field not in saved_fields.keys():
+                raise ValueError(f"embed_context_fields entry {field!r} must be one of the saved fields {list(saved_fields.keys())}, check the configuration file")
+
+        return DocumentDefinitions(saved_fields, model_name, field_to_embed, identifier_field, field_for_llm,
+                                   embed_context_fields=embed_context_fields)
 
 
 definitions_singleton = None
